@@ -1,5 +1,5 @@
-// api/create-subscription.js
-const crypto = require("crypto");
+// api/create-subscription.js  (ESM on Vercel)
+import crypto from "node:crypto";
 
 const WEBSITE_FIELD_ORDER = [
   "merchant_id","merchant_key","return_url","cancel_url","notify_url",
@@ -7,12 +7,11 @@ const WEBSITE_FIELD_ORDER = [
   "payment_method","subscription_type","billing_date","recurring_amount","frequency","cycles"
 ];
 
-function ymd(d = new Date()) {
-  // Force YYYY-MM-DD in local date
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-}
-function enc(v) { return encodeURIComponent(String(v)).replace(/%20/g, "+"); }
-function md5(s) { return crypto.createHash("md5").update(s, "utf8").digest("hex"); }
+const ymd = (d = new Date()) =>
+  new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+
+const enc = v => encodeURIComponent(String(v)).replace(/%20/g, "+");
+const md5 = s => crypto.createHash("md5").update(s, "utf8").digest("hex");
 
 function buildBase(fields, passphrase) {
   const parts = [];
@@ -26,16 +25,16 @@ function buildBase(fields, passphrase) {
   return parts.join("&");
 }
 
-module.exports = (req, res) => {
+export default function handler(req, res) {
   try {
-    const SITE_BASE = process.env.APP_BASE_URL || "https://allcarerecruitment.co.za";
-    const GATEWAY_BASE = process.env.GATEWAY_BASE_URL || `https://${req.headers.host}`;
-    const MODE = (process.env.PAYFAST_MODE || "live").toLowerCase();
-    const PF_HOST = MODE === "live" ? "www.payfast.co.za" : "sandbox.payfast.co.za";
+    const SITE_BASE    = process.env.APP_BASE_URL      || "https://allcarerecruitment.co.za";
+    const GATEWAY_BASE = process.env.GATEWAY_BASE_URL  || `https://${req.headers.host}`;
+    const MODE         = (process.env.PAYFAST_MODE || "live").toLowerCase();
+    const PF_HOST      = MODE === "live" ? "www.payfast.co.za" : "sandbox.payfast.co.za";
 
     const q = req.method === "GET" ? (req.query || {}) : (req.body || {});
     const name_first = q.name_first || "Customer";
-    const name_last = q.name_last || "User";
+    const name_last  = q.name_last  || "User";
     const email_address = q.email_address || "test@example.com";
     const planType = (q.type || "").toLowerCase();
 
@@ -66,9 +65,12 @@ module.exports = (req, res) => {
       cycles: "0"
     };
 
-    // sanity guard
+    // Hard fail fast if essential envs are missing
     for (const k of ["merchant_id", "merchant_key"]) {
-      if (!fields[k]) return res.status(500).send(`Missing ${k} env`);
+      if (!fields[k]) {
+        res.status(500).send(`Missing ${k} env`);
+        return;
+      }
     }
 
     const base = buildBase(fields, process.env.PAYFAST_PASSPHRASE || "");
@@ -95,6 +97,7 @@ ${debug ? "" : '<script>document.getElementById("pfForm").submit();</script>'}
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.status(200).send(html);
   } catch (e) {
+    console.error("[create-subscription] error:", e);
     res.status(500).send("Error building PayFast form");
   }
-};
+}
